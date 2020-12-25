@@ -166,11 +166,6 @@ namespace Zongsoft.Security.Membership
 				return AuthenticationResult.Fail(SecurityReasons.VerifyFaild);
 			}
 
-			if(!string.Equals(identity, value, StringComparison.OrdinalIgnoreCase))
-			{
-
-			}
-
 			//通知验证尝试成功，即清空验证失败记录
 			if(attempter != null)
 				attempter.Done(identity, @namespace);
