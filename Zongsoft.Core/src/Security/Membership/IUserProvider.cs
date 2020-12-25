@@ -44,6 +44,11 @@ namespace Zongsoft.Security.Membership
 		event EventHandler<ChangedEventArgs> Changed;
 		#endregion
 
+		#region 属性定义
+		/// <summary>获取验证器提供程序。</summary>
+		IIdentityVerifierProvider Verification { get; }
+		#endregion
+
 		#region 用户管理
 		/// <summary>
 		/// 获取指定编号对应的用户对象。
@@ -89,18 +94,19 @@ namespace Zongsoft.Security.Membership
 		/// </summary>
 		/// <param name="userId">要设置的用户编号。</param>
 		/// <param name="email">要设置的邮箱地址。</param>
-		/// <param name="verifiable">指定一个值，指示是否必须对设置的邮箱地址进行验证。</param>
-		/// <returns>如果设置成功则返回真(True)，否则返回假(False)。</returns>
-		bool SetEmail(uint userId, string email, bool verifiable = true);
+		/// <param name="verifier">邮箱验证器名称。</param>
+		/// <param name="token">待验证的安全标记。</param>
+		bool SetEmail(uint userId, string email, string verifier, string token);
 
 		/// <summary>
 		/// 设置指定编号的用户手机号码。
 		/// </summary>
 		/// <param name="userId">要设置的用户编号。</param>
 		/// <param name="phone">要设置的手机号码。</param>
-		/// <param name="verifiable">指定一个值，指示是否必须对设置的手机号码进行验证。</param>
+		/// <param name="verifier">邮箱验证器名称。</param>
+		/// <param name="token">待验证的安全标记。</param>
 		/// <returns>如果设置成功则返回真(True)，否则返回假(False)。</returns>
-		bool SetPhone(uint userId, string phone, bool verifiable = true);
+		bool SetPhone(uint userId, string phone, string verifier, string token);
 
 		/// <summary>
 		/// 设置指定编号的用户所属命名空间。
@@ -295,17 +301,6 @@ namespace Zongsoft.Security.Membership
 		/// <param name="passwordAnswers">当前用户的密码问答的答案集。</param>
 		/// <returns>如果设置成则返回真(True)，否则返回假(False)。</returns>
 		bool SetPasswordQuestionsAndAnswers(uint userId, string password, string[] passwordQuestions, string[] passwordAnswers);
-		#endregion
-
-		#region 秘密校验
-		/// <summary>
-		/// 校验指定的秘钥是否正确。
-		/// </summary>
-		/// <param name="userId">指定的用户编号。</param>
-		/// <param name="type">指定的待校验的类型名。</param>
-		/// <param name="secret">指定的待校验的秘钥。</param>
-		/// <returns>如果校验成功则返回真(True)，否则返回假(False)。</returns>
-		bool Verify(uint userId, string type, string secret);
 		#endregion
 	}
 }
