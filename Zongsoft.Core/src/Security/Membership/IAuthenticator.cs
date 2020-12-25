@@ -50,10 +50,11 @@ namespace Zongsoft.Security.Membership
 		#endregion
 
 		#region 属性定义
-		/// <summary>
-		/// 获取验证器的方案名。
-		/// </summary>
+		/// <summary>获取验证器的方案名。</summary>
 		string Scheme { get; }
+
+		/// <summary>获取验证器提供程序。</summary>
+		IIdentityVerifierProvider Verification { get; }
 		#endregion
 
 		#region 方法定义
@@ -81,37 +82,10 @@ namespace Zongsoft.Security.Membership
 		AuthenticationResult Authenticate(string identity, string verifier, string token, string @namespace, string scenario, IDictionary<string, object> parameters);
 
 		/// <summary>
-		/// 验证指定名称的用户是否有效并且和指定的验证码是否有效。
-		/// </summary>
-		/// <param name="identity">要验证的用户标识，仅限用户的“Phone”或“Email”。</param>
-		/// <param name="secret">指定用户的验证码，首先需要通过<see cref="Secret(string, string)"/>方法获得验证码。</param>
-		/// <param name="namespace">要验证的用户标识所属的命名空间。</param>
-		/// <param name="scenario">指定的验证应用场景。</param>
-		/// <param name="parameters">指定的扩展参数集。</param>
-		/// <returns>如果验证的结果对象。</returns>
-		AuthenticationResult AuthenticateSecret(string identity, string secret, string @namespace, string scenario, IDictionary<string, object> parameters);
-
-		/// <summary>
 		/// 当质询完成后回调的通知。
 		/// </summary>
 		/// <param name="context">身份验证上下文对象。</param>
 		void OnChallenged(AuthenticationContext context);
-
-		/// <summary>
-		/// 验证指定编号的用户身份。
-		/// </summary>
-		/// <param name="userId">要验证的用户编号。</param>
-		/// <param name="password">验证的用户密码。</param>
-		/// <param name="reason">输出参数，指示验证失败的理由短语。</param>
-		/// <returns>如果验证通过则返回真(True)，否则返回假(False)。</returns>
-		bool Verify(uint userId, string password, out string reason);
-
-		/// <summary>
-		/// 生成一个验证码，并将其发送到指定用户标识所对应的手机或电子邮箱中。
-		/// </summary>
-		/// <param name="identity">要获取的用户标识，仅限用户的“Phone”或“Email”。</param>
-		/// <param name="namespace">指定用户标识所属的命名空间。</param>
-		void Secret(string identity, string @namespace);
 		#endregion
 	}
 }

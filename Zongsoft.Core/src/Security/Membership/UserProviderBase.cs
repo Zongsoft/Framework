@@ -41,10 +41,7 @@ namespace Zongsoft.Security.Membership
 	public abstract class UserProviderBase<TUser> : IUserProvider<TUser> where TUser : IUser
 	{
 		#region 常量定义
-		private const string KEY_EMAIL_SECRET = "user.email";
-		private const string KEY_PHONE_SECRET = "user.phone";
 		private const string KEY_FORGET_SECRET = "user.forget";
-
 		private const string KEY_AUTHENTICATION_TEMPLATE = "Authentication";
 		private const string KEY_IMPORTANT_CHANGE_TEMPLATE = "Important.Change";
 		#endregion
@@ -74,7 +71,7 @@ namespace Zongsoft.Security.Membership
 		public IAttempter Attempter { get; protected set; }
 
 		[ServiceDependency]
-		public IIdentityVerifierProvider Authorities { get; set; }
+		public IIdentityVerifierProvider Verification { get; set; }
 
 		public IDataAccess DataAccess { get; protected set;}
 
@@ -112,26 +109,17 @@ namespace Zongsoft.Security.Membership
 			return this.DataAccess.Exists<TUser>(MembershipUtility.GetIdentityCondition(identity) & this.GetNamespace(@namespace));
 		}
 
-		public bool SetEmail(uint userId, string email, bool verifiable = true)
+		public bool SetEmail(uint userId, string email, string verifier, string token)
 		{
 			//确认指定的用户编号是否有效
 			userId = GetUserId(userId);
 
-			//判断是否邮箱地址是否需要校验
-			if(verifiable)
-			{
-				//获取指定编号的用户
-				var user = this.GetUser(userId);
+			//获取指定的身份验证器
+			var authority = this.Verification?.GetVerifier(verifier) ?? throw new InvalidOperationException($"The specified '{verifier}' verifier does not exist.");
 
-				if(user == null)
-					return false;
-
-				//发送邮箱地址更改的校验通知
-				this.OnChangeEmail(user, email);
-
-				//返回成功
-				return true;
-			}
+			//如果校验失败则抛出安全异常
+			if(authority.Verify(email, token))
+				throw new SecurityException(SecurityReasons.VerifyFaild);
 
 			if(this.DataAccess.Update<TUser>(
 				new
@@ -147,26 +135,17 @@ namespace Zongsoft.Security.Membership
 			return false;
 		}
 
-		public bool SetPhone(uint userId, string phone, bool verifiable = true)
+		public bool SetPhone(uint userId, string phone, string verifier, string token)
 		{
 			//确认指定的用户编号是否有效
 			userId = GetUserId(userId);
 
-			//判断是否电话号码是否需要校验
-			if(verifiable)
-			{
-				//获取指定编号的用户
-				var user = this.GetUser(userId);
+			//获取指定的身份验证器
+			var authority = this.Verification?.GetVerifier(verifier) ?? throw new InvalidOperationException($"The specified '{verifier}' verifier does not exist.");
 
-				if(user == null)
-					return false;
-
-				//发送电话号码更改的校验通知
-				this.OnChangePhone(user, phone);
-
-				//返回成功
-				return true;
-			}
+			//如果校验失败则抛出安全异常
+			if(authority.Verify(phone, token))
+				throw new SecurityException(SecurityReasons.VerifyFaild);
 
 			if(this.DataAccess.Update<TUser>(
 				new
@@ -425,7 +404,7 @@ namespace Zongsoft.Security.Membership
 			if(string.IsNullOrWhiteSpace(identity))
 				throw new ArgumentNullException(nameof(identity));
 
-			var authorities = this.Authorities ?? throw new InvalidOperationException($"Missing the required authority provider.");
+			var verification = this.Verification ?? throw new InvalidOperationException($"Missing the required authority provider.");
 
 			var index = token.IndexOf(':');
 
@@ -434,7 +413,7 @@ namespace Zongsoft.Security.Membership
 
 			var name = token.Substring(0, index);
 			var type = MembershipUtility.GetIdentityType(identity);
-			var authority = authorities.GetVerifier(name) ?? throw new InvalidOperationException($"The specified '{name}' authority does not exist.");
+			var authority = verification.GetVerifier(name) ?? throw new InvalidOperationException($"The specified '{name}' verifier does not exist.");
 			(string key, string value) tuple;
 
 			switch(type)
@@ -749,45 +728,6 @@ namespace Zongsoft.Security.Membership
 		}
 		#endregion
 
-		#region 秘密校验
-		public bool Verify(uint userId, string type, string secret)
-		{
-			if(string.IsNullOrWhiteSpace(type))
-				throw new ArgumentNullException(nameof(type));
-
-			//校验指定的密文
-			var succeed = this.Secretor.Verify($"{type}:{userId}", secret, out var extra);
-
-			//如果校验成功并且密文中有附加数据
-			if(succeed && (extra != null && extra.Length > 0))
-			{
-				switch(type)
-				{
-					case KEY_EMAIL_SECRET:
-						if(this.DataAccess.Update<TUser>(new
-						{
-							Email = string.IsNullOrWhiteSpace(extra) ? null : extra.Trim(),
-							Modification = DateTime.Now,
-						}, Condition.Equal(nameof(IUser.UserId), userId)) > 0)
-							this.OnChanged(userId, nameof(IUser.Email), extra);
-
-						break;
-					case KEY_PHONE_SECRET:
-						if(this.DataAccess.Update<TUser>(new
-						{
-							Phone = string.IsNullOrWhiteSpace(extra) ? null : extra.Trim(),
-							Modification = DateTime.Now,
-						}, Condition.Equal(nameof(IUser.UserId), userId)) > 0)
-							this.OnChanged(userId, nameof(IUser.Phone), extra);
-
-						break;
-				}
-			}
-
-			return succeed;
-		}
-		#endregion
-
 		#region 抽象方法
 		protected abstract TUser CreateUser(IDictionary<string, object> parameters);
 		#endregion
@@ -924,34 +864,6 @@ namespace Zongsoft.Security.Membership
 				PasswordQuestion = string.Join('\n', questions),
 				PasswordAnswer = buffer
 			}, Condition.Equal(nameof(IUser.UserId), userId)) > 0;
-		}
-
-		protected virtual void OnChangeEmail(IUser user, string email)
-		{
-			if(user == null)
-				return;
-
-			var secret = this.Secretor.Generate($"{KEY_EMAIL_SECRET}:{user.UserId}", email);
-
-			CommandExecutor.Default.Execute($"email.send -template:{KEY_EMAIL_SECRET} {email}", new
-			{
-				Code = secret,
-				Data = user,
-			});
-		}
-
-		protected virtual void OnChangePhone(IUser user, string phone)
-		{
-			if(user == null)
-				return;
-
-			var secret = this.Secretor.Generate($"{KEY_PHONE_SECRET}:{user.UserId}", phone);
-
-			CommandExecutor.Default.Execute($"phone.send -template:{KEY_IMPORTANT_CHANGE_TEMPLATE} {phone}", new
-			{
-				Code = secret,
-				Data = user,
-			});
 		}
 
 		protected virtual void OnValidateName(string name)

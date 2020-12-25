@@ -30,6 +30,7 @@
 using System;
 
 using Zongsoft.Services;
+using Zongsoft.Collections;
 
 namespace Zongsoft.Security
 {
@@ -44,12 +45,20 @@ namespace Zongsoft.Security
 		public IdentityVerifierProvider(IServiceProvider serviceProvider)
 		{
 			_serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+			this.Verifiers = new NamedCollection<IIdentityVerifier>(verifier => verifier.Name);
 		}
+		#endregion
+
+		#region 公共属性
+		public INamedCollection<IIdentityVerifier> Verifiers { get; }
 		#endregion
 
 		#region 公共方法
 		public IIdentityVerifier GetVerifier(string name)
 		{
+			if(this.Verifiers.TryGet(name, out var verifier))
+				return verifier;
+
 			return _serviceProvider.GetMatchedService<IIdentityVerifier>(name);
 		}
 		#endregion
