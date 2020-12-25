@@ -35,7 +35,7 @@ namespace Zongsoft.Security
 	public interface IIdentityVerifier
 	{
 		string Name { get; }
-		IdentityVerifierResult Issue(string key, string extra, IDictionary<string, object> parameters = null);
+		IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null);
 		bool Verify(string key, string token, IDictionary<string, object> parameters = null);
 	}
 }

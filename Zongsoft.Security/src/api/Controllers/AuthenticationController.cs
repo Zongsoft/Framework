@@ -45,36 +45,6 @@ namespace Zongsoft.Security.Web.Controllers
 	public class AuthenticationController : ControllerBase
 	{
 		#region 公共方法
-		[HttpPost]
-		[Authorize]
-		public async Task<IActionResult> Verify()
-		{
-			var identity = this.User.Identity;
-
-			if(identity == null || !identity.IsAuthenticated)
-				return this.Unauthorized();
-
-			var userId = identity.GetIdentifier<uint>();
-
-			if(userId == 0)
-				return this.Unauthorized();
-
-			var password = await this.Request.ReadAsStringAsync();
-
-			if(Authentication.Instance.Verify(userId, password, out var reason))
-				return this.NoContent();
-
-			//添加失败原因短语到返回头
-			this.Response.Headers.Add("X-Security-Reason", reason);
-
-			return reason switch
-			{
-				nameof(SecurityReasons.InvalidIdentity) => this.NotFound(),
-				nameof(SecurityReasons.InvalidPassword) => this.BadRequest(),
-				_ => this.Forbid(),
-			};
-		}
-
 		[HttpPost("{verifier?}")]
 		public Task<IActionResult> SigninAsync(string verifier, [FromBody]AuthenticationRequest request, [FromQuery]string scenario)
 		{
@@ -128,17 +98,6 @@ namespace Zongsoft.Security.Web.Controllers
 
 			return Task.FromResult((IActionResult)this.Unauthorized());
 		}
-
-		[HttpPost("{identity}")]
-		[HttpPost("{namespace}:{identity:required}")]
-		public Task<IActionResult> Secret(string @namespace, string identity)
-		{
-			if(string.IsNullOrWhiteSpace(identity))
-				return Task.FromResult((IActionResult)this.BadRequest());
-
-			Authentication.Instance.Authenticator.Secret(identity, @namespace);
-			return Task.FromResult((IActionResult)this.NoContent());
-		}
 		#endregion
 
 		#region 私有方法
@@ -188,5 +147,40 @@ namespace Zongsoft.Security.Web.Controllers
 			#endregion
 		}
 		#endregion
+	}
+
+	[ApiController]
+	[Area(Modules.Security)]
+	[Route("{area}/Authentication/Verification")]
+	public class AuthenticationVerifierController : ControllerBase
+	{
+		[HttpPost("Issue/{verifier}:{key}")]
+		[HttpPost("Issue/{verifier}:{key}!{namespace:required}")]
+		public Task<IActionResult> Issue(string verifier, string key, string @namespace)
+		{
+			if(string.IsNullOrWhiteSpace(key))
+				return Task.FromResult((IActionResult)this.BadRequest());
+
+			if(!string.IsNullOrWhiteSpace(@namespace))
+				key = key + "!" + @namespace;
+
+			Authentication.Instance.Authenticator.Verification.GetVerifier(verifier).Issue(key);
+			return Task.FromResult((IActionResult)this.NoContent());
+		}
+
+		[HttpPost("Verify/{verifier}:{key}")]
+		[HttpPost("Verify/{verifier}:{key}!{namespace:required}")]
+		public async Task<IActionResult> Verify(string verifier, string key, string @namespace)
+		{
+			var token = await this.Request.ReadAsStringAsync();
+
+			if(!string.IsNullOrWhiteSpace(@namespace))
+				key = key + "!" + @namespace;
+
+			if(Authentication.Instance.Authenticator.Verification.GetVerifier(verifier).Verify(key, token))
+				return this.NoContent();
+
+			return this.NotFound();
+		}
 	}
 }

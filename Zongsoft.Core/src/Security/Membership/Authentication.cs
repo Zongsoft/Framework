@@ -77,12 +77,6 @@ namespace Zongsoft.Security.Membership
 		#endregion
 
 		#region 公共方法
-		public bool Verify(uint userId, string password, out string reason)
-		{
-			var authenticator = this.Authenticator ?? throw new InvalidOperationException("Missing the required authenticator.");
-			return authenticator.Verify(userId, password, out reason);
-		}
-
 		public AuthenticationResult Authenticate(string identity, string verifier, string token, string @namespace, string scenario, IDictionary<string, object> parameters)
 		{
 			var authenticator = this.Authenticator ?? throw new InvalidOperationException("Missing the required authenticator.");
@@ -93,12 +87,6 @@ namespace Zongsoft.Security.Membership
 		{
 			var authenticator = this.Authenticator ?? throw new InvalidOperationException("Missing the required authenticator.");
 			return this.OnAuthenticated(authenticator, scenario, authenticator.Authenticate(identity, password, @namespace, scenario, parameters));
-		}
-
-		public AuthenticationResult AuthenticateSecret(string identity, string secret, string @namespace, string scenario, IDictionary<string, object> parameters)
-		{
-			var authenticator = this.Authenticator ?? throw new InvalidOperationException("Missing the required authenticator.");
-			return this.OnAuthenticated(authenticator, scenario, authenticator.AuthenticateSecret(identity, secret, @namespace, scenario, parameters));
 		}
 		#endregion
 

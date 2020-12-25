@@ -28,6 +28,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 using Zongsoft.Common;
@@ -39,10 +40,6 @@ namespace Zongsoft.Security
 	[Service(typeof(IIdentityVerifier))]
 	public class SecretVerifier : IIdentityVerifier, IMatchable<string>
 	{
-		#region 常量定义
-		private const string KEY_SECRET = "verifier.secret";
-		#endregion
-
 		#region 构造函数
 		public SecretVerifier() { }
 		#endregion
@@ -55,15 +52,9 @@ namespace Zongsoft.Security
 		#endregion
 
 		#region 公共方法
-		public IdentityVerifierResult Issue(string key, string extra, IDictionary<string, object> parameters = null)
+		public IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null)
 		{
-			var secret = this.Secretor.Generate($"{KEY_SECRET}:{key}");
-
-			if(parameters == null && extra != null && extra.Length > 0)
-				parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-
-			foreach(var entry in this.ResolveExtra(extra))
-				parameters[entry.Key] = entry.Value;
+			var secret = this.Secretor.Generate(this.GetSecretKey(key, parameters));
 
 			if(key.Contains('@'))
 				return this.IssueEmail(key, this.GetTemplate(parameters), secret, parameters);
@@ -76,7 +67,7 @@ namespace Zongsoft.Security
 			if(string.IsNullOrWhiteSpace(key))
 				throw new ArgumentNullException(nameof(key));
 
-			return this.Secretor.Verify($"{KEY_SECRET}:{key}", token, out _);
+			return this.Secretor.Verify(this.GetSecretKey(key, parameters), token, out _);
 		}
 		#endregion
 
@@ -86,7 +77,15 @@ namespace Zongsoft.Security
 			if(parameters != null && parameters.TryGetValue("template", out var value) && value is string text)
 				return text;
 
-			return KEY_SECRET;
+			throw new InvalidOperationException($"Missing the required template parameter.");
+		}
+
+		protected virtual string GetSecretKey(string key, IDictionary<string, object> parameters)
+		{
+			if(parameters != null && parameters.TryGetValue("namespace", out var value) && value is string text && !string.IsNullOrWhiteSpace(text))
+				return $"{text.Trim()}.{this.Name}:{key}";
+
+			return $"{this.Name}:{key}";
 		}
 
 		protected virtual IdentityVerifierResult IssueEmail(string key, string template, string secret, IDictionary<string, object> parameters)
@@ -139,24 +138,19 @@ namespace Zongsoft.Security
 		#region 私有方法
 		private IEnumerable<KeyValuePair<string, string>> ResolveExtra(string extra)
 		{
-			if(string.IsNullOrEmpty(extra))
-				yield break;
-
-			var parts = extra.Slice(';');
-
-			foreach(var part in parts)
+			return extra.Slice(';').Select(pair =>
 			{
-				var index = part.IndexOfAny(new[] { '=', ':' });
+				var index = pair.IndexOfAny(new[] { '=', ':' });
 
 				if(index < 0)
-					yield return new KeyValuePair<string, string>(part, null);
+					return new KeyValuePair<string, string>(pair, null);
 				else if(index == 0)
-					yield return new KeyValuePair<string, string>(string.Empty, part.Substring(1));
-				else if(index == part.Length - 1)
-					yield return new KeyValuePair<string, string>(part.Substring(0, index), null);
+					return new KeyValuePair<string, string>(string.Empty, pair.Substring(1));
+				else if(index == pair.Length - 1)
+					return new KeyValuePair<string, string>(pair.Substring(0, index), null);
 				else
-					yield return new KeyValuePair<string, string>(part.Substring(0, index), part.Substring(index + 1));
-			}
+					return new KeyValuePair<string, string>(pair.Substring(0, index), pair.Substring(index + 1));
+			});
 		}
 		#endregion
 

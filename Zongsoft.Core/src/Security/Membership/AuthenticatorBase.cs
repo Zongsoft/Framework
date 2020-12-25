@@ -40,13 +40,17 @@ namespace Zongsoft.Security.Membership
 	public abstract class AuthenticatorBase : IAuthenticator
 	{
 		#region 常量定义
-		private const string KEY_AUTHENTICATION_SECRET = "Zongsoft.Security.Authentication";
+		private const string KEY_AUTHENTICATION_SECRET = "Zongsoft.Authentication";
 		private const string KEY_AUTHENTICATION_TEMPLATE = "Authentication";
 		#endregion
 
 		#region 事件声明
 		public event EventHandler<AuthenticatedEventArgs> Authenticated;
 		public event EventHandler<AuthenticatingEventArgs> Authenticating;
+		#endregion
+
+		#region 成员字段
+		private IIdentityVerifierProvider _verification;
 		#endregion
 
 		#region 构造函数
@@ -63,59 +67,19 @@ namespace Zongsoft.Security.Membership
 
 		[ServiceDependency]
 		public IAttempter Attempter { get; set; }
+
+		[ServiceDependency]
+		public IIdentityVerifierProvider Verification
+		{
+			get => _verification;
+			set => _verification = new IdentityVerifierProviderProxy(value);
+		}
+
 		public IDataAccess DataAccess { get; protected set; }
 		public IServiceProvider ServiceProvider { get; }
 		#endregion
 
 		#region 公共方法
-		public bool Verify(uint userId, string password, out string reason)
-		{
-			//获取验证失败的解决器
-			var attempter = this.Attempter;
-
-			//确认验证失败是否超出限制数，如果超出则返回账号被禁用
-			if(attempter != null && !attempter.Verify(userId.ToString()))
-			{
-				reason = SecurityReasons.AccountSuspended;
-				return false;
-			}
-
-			var token = this.DataAccess.Select<UserSecret>(Mapping.Instance.User, Condition.Equal(nameof(IUser.UserId), userId)).FirstOrDefault();
-
-			//如果帐户不存在则返回无效账户
-			if(token.UserId == 0)
-			{
-				reason = SecurityReasons.InvalidIdentity;
-				return false;
-			}
-
-			//如果账户状态异常则返回账户状态异常
-			if(token.Status != UserStatus.Active)
-			{
-				reason = SecurityReasons.AccountDisabled;
-				return false;
-			}
-
-			if(!PasswordUtility.VerifyPassword(password, token.Password, token.PasswordSalt, "SHA1"))
-			{
-				//通知验证尝试失败
-				if(attempter != null)
-					attempter.Fail(userId.ToString());
-
-				//密码校验失败则返回密码验证失败
-				reason = SecurityReasons.InvalidPassword;
-				return false;
-			}
-
-			//通知验证尝试成功，即清空验证失败记录
-			if(attempter != null)
-				attempter.Done(userId.ToString());
-
-			//返回校验成功
-			reason = null;
-			return true;
-		}
-
 		public AuthenticationResult Authenticate(string identity, string password, string @namespace, string scenario, IDictionary<string, object> parameters)
 		{
 			if(string.IsNullOrWhiteSpace(identity))
@@ -190,7 +154,7 @@ namespace Zongsoft.Security.Membership
 				return AuthenticationResult.Fail(SecurityReasons.AccountDisabled);
 
 			//获取必须的校验器
-			var authority = this.ServiceProvider.ResolveRequired<IIdentityVerifierProvider>().GetVerifier(verifier) ?? throw new InvalidOperationException("Missing the required authority.");
+			var authority = this.GetVerifier(verifier) ?? throw new InvalidOperationException($"The specified '{verifier}' verifier does not exist.");
 
 			if(!authority.Verify(identity, token, parameters))
 			{
@@ -209,84 +173,16 @@ namespace Zongsoft.Security.Membership
 			//激发“Authenticated”事件
 			return this.OnAuthenticated(user, parameters);
 		}
-
-		public AuthenticationResult AuthenticateSecret(string identity, string secret, string @namespace, string scenario, IDictionary<string, object> parameters)
-		{
-			if(string.IsNullOrWhiteSpace(identity))
-				throw new ArgumentNullException(nameof(identity));
-
-			//激发“Authenticating”事件
-			this.OnAuthenticating(@namespace, identity, scenario, parameters);
-
-			//获取验证失败的解决器
-			var attempter = this.Attempter;
-
-			//确认验证失败是否超出限制数，如果超出则返回账号被禁用
-			if(attempter != null && !attempter.Verify(identity, @namespace))
-				return AuthenticationResult.Fail(SecurityReasons.AccountSuspended);
-
-			//获取指定标识的用户对象
-			var user = this.DataAccess.Select<IUser>(MembershipUtility.GetIdentityCondition(identity, out _) & this.GetNamespace(@namespace)).FirstOrDefault();
-
-			//如果帐户不存在则返回无效账号
-			if(user == null)
-				return AuthenticationResult.Fail(SecurityReasons.InvalidIdentity);
-
-			//如果账户状态异常则返回账号状态异常
-			if(user.Status != UserStatus.Active)
-				return AuthenticationResult.Fail(SecurityReasons.AccountDisabled);
-
-			//获取必须的秘密生成器
-			var secretor = this.GetSecretor() ?? throw new InvalidOperationException($"Missing a required secretor.");
-
-			if(!secretor.Verify(GetSecretKey(identity, @namespace), secret))
-			{
-				//通知验证尝试失败
-				if(attempter != null)
-					attempter.Fail(identity, @namespace);
-
-				//验证码校验失败则返回密码验证失败
-				return AuthenticationResult.Fail(SecurityReasons.InvalidPassword);
-			}
-
-			//通知验证尝试成功，即清空验证失败记录
-			if(attempter != null)
-				attempter.Done(identity, @namespace);
-
-			//激发“Authenticated”事件
-			return this.OnAuthenticated(user, parameters);
-		}
-		#endregion
-
-		#region 获取秘密
-		public void Secret(string identity, string @namespace = null)
-		{
-			//获取必须的秘密生成器
-			var secretor = this.GetSecretor() ?? throw new InvalidOperationException($"Missing a required secretor.");
-			var secret = secretor.Generate(GetSecretKey(identity, @namespace));
-
-			switch(MembershipUtility.GetIdentityType(identity))
-			{
-				case UserIdentityType.Email:
-					CommandExecutor.Default.Execute($"email.send -template:{KEY_AUTHENTICATION_TEMPLATE} {identity}", new
-					{
-						Code = secret,
-					});
-					break;
-				case UserIdentityType.Phone:
-					CommandExecutor.Default.Execute($"phone.send -template:{KEY_AUTHENTICATION_TEMPLATE} {identity}", new
-					{
-						Code = secret,
-					});
-					break;
-				default:
-					throw new ArgumentException($"Invalid secret code identity.");
-			}
-		}
 		#endregion
 
 		#region 虚拟方法
 		protected abstract ISecretor GetSecretor();
+
+		protected virtual IIdentityVerifier GetVerifier(string name)
+		{
+			return new IdentityVerifierProxy(this.Verification.GetVerifier(name));
+		}
+
 		protected virtual uint GetPassword(string identity, string @namespace, out byte[] password, out long passwordSalt, out UserStatus status, out DateTime? statusTimestamp)
 		{
 			if(string.IsNullOrWhiteSpace(@namespace))
@@ -340,22 +236,54 @@ namespace Zongsoft.Security.Membership
 
 		#region 私有方法
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-		private string GetSecretKey(string identity, string @namespace)
-		{
-			return KEY_AUTHENTICATION_SECRET + ":" +
-				(
-					string.IsNullOrWhiteSpace(@namespace) ?
-					identity.Trim() :
-					identity.Trim() + "!" + @namespace.Trim()
-				).ToLowerInvariant();
-		}
-
-		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		private Condition GetNamespace(string @namespace)
 		{
 			return Mapping.Instance.Namespace.GetCondition(Mapping.Instance.User, @namespace);
 		}
 		#endregion
+
+		private class IdentityVerifierProxy : IIdentityVerifier
+		{
+			private readonly IIdentityVerifier _verifier;
+
+			public IdentityVerifierProxy(IIdentityVerifier verifier)
+			{
+				_verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
+			}
+
+			public string Name => _verifier.Name;
+
+			public IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null)
+			{
+				if(parameters == null)
+					parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+				parameters["namespace"] = KEY_AUTHENTICATION_SECRET;
+				parameters["template"]  = KEY_AUTHENTICATION_TEMPLATE;
+
+				return _verifier.Issue(key, parameters);
+			}
+
+			public bool Verify(string key, string token, IDictionary<string, object> parameters = null)
+			{
+				return _verifier.Verify(key, token, parameters);
+			}
+		}
+
+		private class IdentityVerifierProviderProxy : IIdentityVerifierProvider
+		{
+			private readonly IIdentityVerifierProvider _provider;
+
+			public IdentityVerifierProviderProxy(IIdentityVerifierProvider provider)
+			{
+				_provider = provider ?? throw new ArgumentNullException(nameof(provider));
+			}
+
+			public IIdentityVerifier GetVerifier(string name)
+			{
+				return new IdentityVerifierProxy(_provider.GetVerifier(name));
+			}
+		}
 
 		#region 嵌套结构
 		private struct UserSecret

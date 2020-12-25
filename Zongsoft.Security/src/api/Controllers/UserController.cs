@@ -212,31 +212,31 @@ namespace Zongsoft.Security.Web.Controllers
 			return this.UserProvider.SetFullName(id, content) ? (IActionResult)this.NoContent() : this.NotFound();
 		}
 
-		[HttpPatch("{id}/Email")]
-		[HttpPatch("Email/{id?}")]
-		public async Task<IActionResult> SetEmail(uint id)
+		[HttpPatch("{id}/Email/{verifier}:{secret}")]
+		[HttpPatch("Email/{verifier}:{secret}")]
+		public async Task<IActionResult> SetEmail(uint id, string verifier, string secret)
 		{
 			var content = await this.Request.ReadAsStringAsync();
 
 			if(string.IsNullOrWhiteSpace(content))
 				return this.BadRequest();
 
-			return this.UserProvider.SetEmail(id, content, true) ?
-				(IActionResult)this.RedirectToAction(nameof(Verify), new { id, type = "user.email" }) :
+			return this.UserProvider.SetEmail(id, content, verifier, secret) ?
+				(IActionResult)this.NoContent() :
 				(IActionResult)this.NotFound();
 		}
 
-		[HttpPatch("{id}/Phone")]
-		[HttpPatch("Phone/{id?}")]
-		public async Task<IActionResult> SetPhone(uint id)
+		[HttpPatch("{id}/Phone/{verifier}:{secret}")]
+		[HttpPatch("Phone/{verifier}:{secret}")]
+		public async Task<IActionResult> SetPhone(uint id, string verifier, string secret)
 		{
 			var content = await this.Request.ReadAsStringAsync();
 
 			if(string.IsNullOrWhiteSpace(content))
 				return this.BadRequest();
 
-			return this.UserProvider.SetPhone(id, content, true) ?
-				(IActionResult)this.RedirectToAction(nameof(Verify), new { id, type = "user.phone" }) :
+			return this.UserProvider.SetPhone(id, content, verifier, secret) ?
+				(IActionResult)this.NoContent() :
 				(IActionResult)this.NotFound();
 		}
 
@@ -282,15 +282,6 @@ namespace Zongsoft.Security.Web.Controllers
 			return this.UserProvider.Exists(identity, @namespace) ?
 				Task.FromResult((IActionResult)this.NoContent()) :
 				Task.FromResult((IActionResult)this.NotFound());
-		}
-
-		[AllowAnonymous]
-		[HttpPost("{id}/Verify/{type:required}")]
-		public Task<IActionResult> Verify(uint id, string type, [FromQuery]string secret)
-		{
-			return this.UserProvider.Verify(id, type, secret) ?
-				Task.FromResult((IActionResult)this.NoContent()) :
-				Task.FromResult((IActionResult)this.BadRequest());
 		}
 		#endregion
 
@@ -626,5 +617,49 @@ namespace Zongsoft.Security.Web.Controllers
 			public string[] Answers { get; set; }
 		}
 		#endregion
+	}
+
+	[ApiController]
+	[Area(Modules.Security)]
+	[Route("{area}/Users/Verification")]
+	public class UserVerifierController : ControllerBase
+	{
+		private IUserProvider<IUser> _userProvider;
+
+		[ServiceDependency(IsRequired = true)]
+		public IUserProvider<IUser> UserProvider
+		{
+			get => _userProvider;
+			set => _userProvider = value ?? throw new ArgumentNullException();
+		}
+
+		[HttpPost("Issue/{verifier}:{key}")]
+		[HttpPost("Issue/{verifier}:{key}!{namespace:required}")]
+		public Task<IActionResult> Issue(string verifier, string key, string @namespace)
+		{
+			if(string.IsNullOrWhiteSpace(key))
+				return Task.FromResult((IActionResult)this.BadRequest());
+
+			if(!string.IsNullOrWhiteSpace(@namespace))
+				key = key + "!" + @namespace;
+
+			_userProvider.Verification.GetVerifier(verifier).Issue(key);
+			return Task.FromResult((IActionResult)this.NoContent());
+		}
+
+		[HttpPost("Verify/{verifier}:{key}")]
+		[HttpPost("Verify/{verifier}:{key}!{namespace:required}")]
+		public async Task<IActionResult> Verify(string verifier, string key, string @namespace)
+		{
+			var token = await this.Request.ReadAsStringAsync();
+
+			if(!string.IsNullOrWhiteSpace(@namespace))
+				key = key + "!" + @namespace;
+
+			if(_userProvider.Verification.GetVerifier(verifier).Verify(key, token))
+				return this.NoContent();
+
+			return this.NotFound();
+		}
 	}
 }
