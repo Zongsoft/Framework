@@ -66,6 +66,7 @@ namespace Zongsoft.Security
 		public bool Failed { get => Failure != null; }
 
 		public Exception Failure { get; }
+		public string Sequence { get; }
 		public string Key { get; }
 		public string Token { get; }
 		public IDictionary<string, object> Parameters { get; }
