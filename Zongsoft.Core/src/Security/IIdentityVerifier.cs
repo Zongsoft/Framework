@@ -36,6 +36,8 @@ namespace Zongsoft.Security
 	{
 		string Name { get; }
 		IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null);
-		bool Verify(string key, string token, IDictionary<string, object> parameters = null);
+		IdentityVerifierResult Issue(string key, string value, IDictionary<string, object> parameters = null);
+		bool Verify(string sequence, string token, IDictionary<string, object> parameters = null);
+		bool Verify(string sequence, string token, out string value, IDictionary<string, object> parameters = null);
 	}
 }
