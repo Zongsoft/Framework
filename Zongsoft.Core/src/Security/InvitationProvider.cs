@@ -28,19 +28,39 @@
  */
 
 using System;
-using System.Collections.Generic;
+
+using Zongsoft.Services;
+using Zongsoft.Collections;
 
 namespace Zongsoft.Security
 {
-	public interface IIdentityVerifier
+	[Service(typeof(IInvitationProvider))]
+	public class InvitationProvider : IInvitationProvider
 	{
-		string Name { get; }
+		#region 成员字段
+		private readonly IServiceProvider _serviceProvider;
+		#endregion
 
-		string Issue(string identity, IDictionary<string, object> parameters = null);
+		#region 构造函数
+		public InvitationProvider(IServiceProvider serviceProvider)
+		{
+			_serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+			this.Invitations = new NamedCollection<IInvitation>(invitation => invitation.Name);
+		}
+		#endregion
 
-		bool Verify(string token, IDictionary<string, object> parameters = null) => this.Verify(token, out _, parameters);
-		bool Verify(string token, out string identity, IDictionary<string, object> parameters = null);
-		bool Verify(string token, string secret, IDictionary<string, object> parameters = null) => Verify(token, secret, out _, parameters);
-		bool Verify(string token, string secret, out string identity, IDictionary<string, object> parameters = null);
+		#region 公共属性
+		public INamedCollection<IInvitation> Invitations { get; }
+		#endregion
+
+		#region 公共方法
+		public IInvitation GetInvitation(string name)
+		{
+			if(this.Invitations.TryGet(name, out var invitation))
+				return invitation;
+
+			return _serviceProvider.GetMatchedService<IInvitation>(name);
+		}
+		#endregion
 	}
 }

@@ -35,27 +35,27 @@ namespace Zongsoft.Security
 	public struct IdentityVerifierResult
 	{
 		#region 私有构造
-		private IdentityVerifierResult(string key, string token, IDictionary<string, object> parameters = null)
+		private IdentityVerifierResult(string identity, string token, IDictionary<string, object> parameters = null)
 		{
-			if(string.IsNullOrEmpty(key))
-				throw new ArgumentNullException(nameof(key));
+			if(string.IsNullOrEmpty(identity))
+				throw new ArgumentNullException(nameof(identity));
 
 			if(string.IsNullOrEmpty(token))
 				throw new ArgumentNullException(nameof(token));
 
 			this.Failure = null;
-			this.Key = key;
+			this.Identity = identity;
 			this.Token = token;
 			this.Parameters = parameters;
 		}
 
-		private IdentityVerifierResult(string key, Exception exception, IDictionary<string, object> parameters = null)
+		private IdentityVerifierResult(string identity, Exception exception, IDictionary<string, object> parameters = null)
 		{
-			if(string.IsNullOrEmpty(key))
-				throw new ArgumentNullException(nameof(key));
+			if(string.IsNullOrEmpty(identity))
+				throw new ArgumentNullException(nameof(identity));
 
 			this.Failure = exception;
-			this.Key = key;
+			this.Identity = identity;
 			this.Token = null;
 			this.Parameters = parameters;
 		}
@@ -66,21 +66,20 @@ namespace Zongsoft.Security
 		public bool Failed { get => Failure != null; }
 
 		public Exception Failure { get; }
-		public string Sequence { get; }
-		public string Key { get; }
+		public string Identity { get; }
 		public string Token { get; }
 		public IDictionary<string, object> Parameters { get; }
 		#endregion
 
 		#region 静态方法
-		public static IdentityVerifierResult Success(string key, string token, IDictionary<string, object> parameters = null)
+		public static IdentityVerifierResult Success(string identity, string token, IDictionary<string, object> parameters = null)
 		{
-			return new IdentityVerifierResult(key, token, parameters);
+			return new IdentityVerifierResult(identity, token, parameters);
 		}
 
-		public static IdentityVerifierResult Fail(string key, Exception exception, IDictionary<string, object> parameters = null)
+		public static IdentityVerifierResult Fail(string identity, Exception exception, IDictionary<string, object> parameters = null)
 		{
-			return new IdentityVerifierResult(key, exception, parameters);
+			return new IdentityVerifierResult(identity, exception, parameters);
 		}
 		#endregion
 	}
