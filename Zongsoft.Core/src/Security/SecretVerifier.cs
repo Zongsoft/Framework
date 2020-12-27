@@ -28,7 +28,6 @@
  */
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
 
 using Zongsoft.Common;
@@ -52,22 +51,42 @@ namespace Zongsoft.Security
 		#endregion
 
 		#region 公共方法
-		public IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null)
+		public string Issue(string identity, IDictionary<string, object> parameters = null)
 		{
-			var secret = this.Secretor.Generate(this.GetSecretKey(key, parameters));
+			var token = Environment.TickCount64.ToString("X") + Randomizer.GenerateString();
+			var secret = this.Secretor.Generate(GetKey(token), identity);
 
-			if(key.Contains('@'))
-				return this.IssueEmail(key, this.GetTemplate(parameters), secret, parameters);
+			if(identity.Contains('@'))
+				return this.IssueEmail(identity, this.GetTemplate(parameters), secret, parameters) ? token : null;
 			else
-				return this.IssuePhone(key, this.GetTemplate(parameters), secret, parameters);
+				return this.IssuePhone(identity, this.GetTemplate(parameters), secret, parameters) ? token : null;
 		}
 
-		public bool Verify(string key, string token, IDictionary<string, object> parameters = null)
+		public bool Verify(string token, out string identity, IDictionary<string, object> parameters = null)
 		{
-			if(string.IsNullOrWhiteSpace(key))
-				throw new ArgumentNullException(nameof(key));
+			if(string.IsNullOrWhiteSpace(token))
+				throw new ArgumentNullException(nameof(token));
 
-			return this.Secretor.Verify(this.GetSecretKey(key, parameters), token, out _);
+			var index = token.IndexOfAny(new[] { ':', '=' });
+
+			if(index > 0 && index < token.Length - 1)
+			{
+				var key = token.Substring(0, index);
+				var secret = token.Substring(index + 1);
+
+				return this.Secretor.Verify(GetKey(key), secret, out identity);
+			}
+
+			identity = null;
+			return false;
+		}
+
+		public bool Verify(string token, string secret, out string identity, IDictionary<string, object> parameters = null)
+		{
+			if(string.IsNullOrWhiteSpace(token))
+				throw new ArgumentNullException(nameof(token));
+
+			return this.Secretor.Verify(GetKey(token), secret, out identity);
 		}
 		#endregion
 
@@ -80,33 +99,26 @@ namespace Zongsoft.Security
 			throw new InvalidOperationException($"Missing the required template parameter.");
 		}
 
-		protected virtual string GetSecretKey(string key, IDictionary<string, object> parameters)
-		{
-			if(parameters != null && parameters.TryGetValue("namespace", out var value) && value is string text && !string.IsNullOrWhiteSpace(text))
-				return $"{text.Trim()}.{this.Name}:{key}";
-
-			return $"{this.Name}:{key}";
-		}
-
-		protected virtual IdentityVerifierResult IssueEmail(string key, string template, string secret, IDictionary<string, object> parameters)
+		protected virtual bool IssueEmail(string identity, string template, string secret, IDictionary<string, object> parameters)
 		{
 			try
 			{
-				CommandExecutor.Default.Execute($"email.send -template:{template} {key}", new
+				CommandExecutor.Default.Execute($"email.send -template:{template} {identity}", new
 				{
 					Code = secret,
 					Data = parameters,
 				});
 
-				return IdentityVerifierResult.Success(key, secret, parameters);
+				return true;
 			}
 			catch(Exception ex)
 			{
-				return IdentityVerifierResult.Fail(key, ex, parameters);
+				Zongsoft.Diagnostics.Logger.Error(ex);
+				return false;
 			}
 		}
 
-		protected virtual IdentityVerifierResult IssuePhone(string key, string template, string secret, IDictionary<string, object> parameters)
+		protected virtual bool IssuePhone(string key, string template, string secret, IDictionary<string, object> parameters)
 		{
 			try
 			{
@@ -126,32 +138,18 @@ namespace Zongsoft.Security
 						Data = parameters,
 					});
 
-				return IdentityVerifierResult.Success(key, secret, parameters);
+				return true;
 			}
 			catch(Exception ex)
 			{
-				return IdentityVerifierResult.Fail(key, ex, parameters);
+				Zongsoft.Diagnostics.Logger.Error(ex);
+				return false;
 			}
 		}
 		#endregion
 
 		#region 私有方法
-		private IEnumerable<KeyValuePair<string, string>> ResolveExtra(string extra)
-		{
-			return extra.Slice(';').Select(pair =>
-			{
-				var index = pair.IndexOfAny(new[] { '=', ':' });
-
-				if(index < 0)
-					return new KeyValuePair<string, string>(pair, null);
-				else if(index == 0)
-					return new KeyValuePair<string, string>(string.Empty, pair.Substring(1));
-				else if(index == pair.Length - 1)
-					return new KeyValuePair<string, string>(pair.Substring(0, index), null);
-				else
-					return new KeyValuePair<string, string>(pair.Substring(0, index), pair.Substring(index + 1));
-			});
-		}
+		private static string GetKey(string token) => "Zongsoft.SecretVerifier:" + token;
 		#endregion
 
 		#region 匹配方法

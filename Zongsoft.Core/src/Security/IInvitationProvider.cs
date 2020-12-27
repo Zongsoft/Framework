@@ -28,19 +28,11 @@
  */
 
 using System;
-using System.Collections.Generic;
 
 namespace Zongsoft.Security
 {
-	public interface IIdentityVerifier
+	public interface IInvitationProvider
 	{
-		string Name { get; }
-
-		string Issue(string identity, IDictionary<string, object> parameters = null);
-
-		bool Verify(string token, IDictionary<string, object> parameters = null) => this.Verify(token, out _, parameters);
-		bool Verify(string token, out string identity, IDictionary<string, object> parameters = null);
-		bool Verify(string token, string secret, IDictionary<string, object> parameters = null) => Verify(token, secret, out _, parameters);
-		bool Verify(string token, string secret, out string identity, IDictionary<string, object> parameters = null);
+		IInvitation GetInvitation(string name);
 	}
 }

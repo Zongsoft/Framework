@@ -156,7 +156,7 @@ namespace Zongsoft.Security.Membership
 			//获取必须的校验器
 			var authority = this.GetVerifier(verifier) ?? throw new InvalidOperationException($"The specified '{verifier}' verifier does not exist.");
 
-			if(!authority.Verify(identity, token, parameters))
+			if(!authority.Verify(token, out var value, parameters))
 			{
 				//通知验证尝试失败
 				if(attempter != null)
@@ -164,6 +164,11 @@ namespace Zongsoft.Security.Membership
 
 				//验证码校验失败则返回校验失败
 				return AuthenticationResult.Fail(SecurityReasons.VerifyFaild);
+			}
+
+			if(!string.Equals(identity, value, StringComparison.OrdinalIgnoreCase))
+			{
+
 			}
 
 			//通知验证尝试成功，即清空验证失败记录
@@ -253,7 +258,7 @@ namespace Zongsoft.Security.Membership
 
 			public string Name => _verifier.Name;
 
-			public IdentityVerifierResult Issue(string key, IDictionary<string, object> parameters = null)
+			public string Issue(string identity, IDictionary<string, object> parameters = null)
 			{
 				if(parameters == null)
 					parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -261,12 +266,17 @@ namespace Zongsoft.Security.Membership
 				parameters["namespace"] = KEY_AUTHENTICATION_SECRET;
 				parameters["template"]  = KEY_AUTHENTICATION_TEMPLATE;
 
-				return _verifier.Issue(key, parameters);
+				return _verifier.Issue(identity, parameters);
 			}
 
-			public bool Verify(string key, string token, IDictionary<string, object> parameters = null)
+			public bool Verify(string token, out string identity, IDictionary<string, object> parameters = null)
 			{
-				return _verifier.Verify(key, token, parameters);
+				return _verifier.Verify(token, out identity, parameters);
+			}
+
+			public bool Verify(string token, string secret, out string identity, IDictionary<string, object> parameters = null)
+			{
+				return _verifier.Verify(token, secret, out identity, parameters);
 			}
 		}
 
